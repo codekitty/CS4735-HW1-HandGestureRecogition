@@ -75,27 +75,43 @@ while hasFrame(vidObj)
     % what: use convex hull
     ch = convhull(contHand);
     
-    % search for defects
-    chpoints = conthand(ch, :);
+    % search for convexity defects
     defect_score = [];
-    for p=2:length(ch)
+    defects = [];
+    for p=3:length(ch)
+        if abs(ch(p-1) - ch(p)) < 30;
+            continue; % must have at some pixels inbetween to be considered.
+        end
         d = norm(contHand(ch(p-1), :)-contHand(ch(p), :));
-        [k, v] = convhulln([contHand(ch(p-1), :); contHand(ch(p), :); ]);
-        defect_score(p-1) = v/d;
+        from=min(ch(p-1), ch(p));
+        to=max(ch(p-1), ch(p));
+        nuk = contHand(from:to, :);
+        [k, v] = convhulln(nuk);
+        nukch = convhull(nuk);
+        [nn, dists] = knnsearch(nuk(1, :), nuk(nukch(1:(end-2)), :));
+        if any(dists >= d*1.3)  
+            [~,maxdistsid] = max(dists);
+            defects(end+1,:) = nuk(nukch(maxdistsid), :);
+        end
     end
-    didx = sort(defect_score);
+%     [~, didx] = sort(defect_score, 'descend');
+    
     
     if (verbos)
         [i,j,s] = find(binFrame);
         scatter(j, i, 100, '.b');    
         scatter(pos(:,2), pos(:,1), 400, '.r');
         scatter(contHand(:,2),contHand(:,1), 100, '.k');
+%         scatter(contHand(ch(didx(1:5)), 2), contHand(ch(didx(1:5)), 1), 400,'.g');
+        if ~isempty(defects)
+            scatter(defects(:, 2), defects(:, 1), 400,'.g');
+        end
         plot(contHand(ch,2), contHand(ch,1), '-r');
         title(['em ' num2str(em)]);
     end
     
-     pause(1/(vidObj.FrameRate*100));
-     hold off;
+    pause(1/(vidObj.FrameRate*100));
+    hold off;
 end
 
 end
