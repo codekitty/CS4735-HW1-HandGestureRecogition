@@ -1,4 +1,4 @@
-function identify_password(filename)
+function passcode=interpret_gesture(filename)
 
 % params
 verbos = true;
@@ -10,12 +10,16 @@ close all;
 
 % init variables
 pos = [];
+splayed = [];
+passcode = [];
 
 % If left unspecified, ask user to supply a movie clip in '.mov' format
 if ~exist('filename', 'var')
     [filename, pathname, ~] = uigetfile('*.mov', 'Load Password Video');
     if isequal(filename,0) || isequal(pathname,0)
         return;
+    else
+        filename = [pathname filename];
     end
 end
 
@@ -100,9 +104,12 @@ while hasFrame(vidObj)
     % estimate a circle around palm
     if ~isempty(defects)
         [~, r] = knnsearch(pos(end, :),defects); 
-        palm_r = max(r);
+        palm_r = median(r);
     end
-        
+    
+    % is splayed or fist
+    splayed(end+1) = size(defects, 1)>1;
+    
     % plot the frame with identified objects and metrics
     if (verbos)
 %         frameInds = getInds(binFrame);
@@ -120,15 +127,76 @@ while hasFrame(vidObj)
     pause(1/(vidObj.FrameRate*100));
     hold off;
 end
-
+hold on;
 % == analyse for gesture pass key ==
 
 % examine the vectors of directions
-dirs = pos(2:end, :)-pos(1:(end-1), :);
 
 % median filter for reducing noise
-spos = smooth(pos, 20);
-scatter(spos(:,2), spos(:,1), 400, '.m');
+spos1 = smooth(pos(:,1), 30,'sgolay');
+spos2 = smooth(pos(:,2), 30,'sgolay');
+spos = [spos1 spos2];
+sdirs = diff(spos);
+
+% expect at least consistent clear (magnitute) movements in a direction
+magnitute = 2;
+win = 5;
+bindirs = sdirs;
+bindirs(abs(sdirs)<magnitute) = 0;
+bindirs = sign(bindirs);
+
+% remove sporadic directional movements
+rem = []; %list of indices to remove
+curr_dir = bindirs(1, :);
+for diri=2:(size(bindirs,1)-win)
+    dir = bindirs(diri,:);
+    if ~ismember(dir, curr_dir, 'rows')
+        if (win)==sum(ismember(bindirs((1:win)+diri,:),dir, 'rows'))
+            curr_dir = dir;
+        else
+            rem(end+1) = diri;
+        end
+    end
+end
+bindirs(rem, :) = [];
+splayed(rem) = [];
+
+% remove consecutive duplicates to get phrase
+detected_directions_inds = find(~ismember(diff(bindirs),[0 0], 'rows'));
+detected_directions = bindirs(detected_directions_inds, :);
+tmp_splayed = [];
+for diri=2:size(detected_directions,1)
+    tmp_splayed(diri) = median(splayed(detected_directions_inds(diri-1):detected_directions_inds(diri)));
+end
+splayed = tmp_splayed;
+
+% decide between consecutive non zero directions 
+rem = [];
+stretches = diff([1; detected_directions_inds(:)]);
+for diri=2:numel(stretches)
+    % if it is no a zero direction
+    if ~ismember([0 0], bindirs(detected_directions_inds(diri), :), 'rows')
+        if ~ismember([0 0], bindirs(detected_directions_inds(diri-1), :), 'rows')
+            if stretches(diri) > stretches(diri-1)
+                rem(end+1) = diri-1;
+            else
+                rem(end+1) = diri;
+            end
+        end
+    end
+end
+filtered_detected_directions = detected_directions;
+filtered_detected_directions(rem,:) = [];
+splayed(rem)=[];
+
+% remove duplicates again because previous step may create dups
+filtered_detected_directions = filtered_detected_directions([true;~ismember(diff(filtered_detected_directions),[0 0], 'rows')],:);
+filtered_detected_directions = filtered_detected_directions(~ismember(filtered_detected_directions,[0 0], 'rows'),:);
+splayed = splayed(~ismember(filtered_detected_directions,[0 0], 'rows'));
+
+passcode = [filtered_detected_directions splayed(:)];
+
+plot(spos2, spos1, '-m');
 
 end
 
