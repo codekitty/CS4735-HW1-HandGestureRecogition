@@ -1,3 +1,5 @@
+% Check a passcode by supplying the passcode video file or otherwise
+% a file chooser will open for you.
 function passcode=checkPasscode(filename)
     passcode = [];
     
@@ -8,6 +10,9 @@ function passcode=checkPasscode(filename)
             return;
         end
         filename = [pathname filename];
+        
+        
+        % == interpret video of gesture to passcode ==
         passcode=interpret_gesture(filename);
     end
     
@@ -16,7 +21,7 @@ function passcode=checkPasscode(filename)
     file=load(passcodefilename); 
     real_passcode = file.passcode;
     
-    if (size(passcode) ~= size(real_passcode) || any(any(real_passcode~=passcode)))
+    if any(size(passcode) ~= size(real_passcode)) || (any(any(real_passcode~=passcode)))
         msgbox('Wrong passcode.');
         passcode
         real_passcode

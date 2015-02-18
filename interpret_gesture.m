@@ -44,7 +44,7 @@ while hasFrame(vidObj)
     if (length(contours)>1)
     
         % check if there is more than one large region - go tougher on thresh
-        while length(contours{1})*.8 < length(contours{2})
+        while length(contours{1})*.9 < length(contours{2})
             thresh = thresh*1.05; % increase by five percent
             binFrame = rgb2bin(vidFrame, thresh, pink_skin);
             [contours, regions] = segment_image(binFrame);
@@ -85,7 +85,7 @@ while hasFrame(vidObj)
     % search for convexity defects
     defects = [];
     for p=3:length(ch)
-        if abs(ch(p-1) - ch(p)) < 35;
+        if abs(ch(p-1) - ch(p)) < 40;
             continue; % must have at some pixels inbetween to be considered.
         end
         d = norm(contHand(ch(p-1), :)-contHand(ch(p), :));
@@ -94,7 +94,7 @@ while hasFrame(vidObj)
         nuk = contHand(from:to, :);
         nukch = convhull(nuk);
         [nn, dists] = knnsearch(nuk(1, :), nuk(nukch(1:(end-2)), :));
-        if any(dists >= d)  
+        if any(dists >= d*1.1)  
             [~,maxdistsid] = max(dists);
             defects(end+1,:) = nuk(nukch(maxdistsid), :);
             
@@ -108,7 +108,7 @@ while hasFrame(vidObj)
     end
     
     % is splayed or fist
-    splayed(end+1) = size(defects, 1)>1;
+    splayed(end+1) = size(defects, 1);
     
     % plot the frame with identified objects and metrics
     if (verbos)
@@ -117,7 +117,7 @@ while hasFrame(vidObj)
         scatter(pos(:,2), pos(:,1), 400, '.r');
         scatter(contHand(:,2),contHand(:,1), 100, '.w');
         if ~isempty(defects)
-            scatter(defects(:, 2), defects(:, 1), 400,'.g');
+            scatter(defects(:, 2), defects(:, 1), 800,'.g');
             plot_circle(pos(end, :),palm_r, '-y');
         end
         plot(contHand(ch,2), contHand(ch,1), '-r');
@@ -128,14 +128,17 @@ while hasFrame(vidObj)
     hold off;
 end
 hold on;
-% == analyse for gesture pass key ==
+
+% == analyse gesture sequence ==
 
 % examine the vectors of directions
 
-% median filter for reducing noise
-spos1 = smooth(pos(:,1), 30,'sgolay');
-spos2 = smooth(pos(:,2), 30,'sgolay');
+% filter for reducing noise
+spos1 = smooth(pos(:,1), 35,'sgolay');
+spos2 = smooth(pos(:,2), 35,'sgolay');
 spos = [spos1 spos2];
+
+% grab the differences vector for direction
 sdirs = diff(spos);
 
 % expect at least consistent clear (magnitute) movements in a direction
@@ -147,8 +150,8 @@ bindirs = sign(bindirs);
 
 % remove sporadic directional movements
 rem = []; %list of indices to remove
-curr_dir = bindirs(1, :);
-for diri=2:(size(bindirs,1)-win)
+curr_dir = [8,8];
+for diri=1:(size(bindirs,1)-win)
     dir = bindirs(diri,:);
     if ~ismember(dir, curr_dir, 'rows')
         if (win)==sum(ismember(bindirs((1:win)+diri,:),dir, 'rows'))
@@ -165,36 +168,56 @@ splayed(rem) = [];
 detected_directions_inds = find(~ismember(diff(bindirs),[0 0], 'rows'));
 detected_directions = bindirs(detected_directions_inds, :);
 tmp_splayed = [];
-for diri=2:size(detected_directions,1)
-    tmp_splayed(diri) = median(splayed(detected_directions_inds(diri-1):detected_directions_inds(diri)));
+inds = [1; detected_directions_inds(:)];
+for diri=2:numel(inds)
+    % vector of splayed on stretch
+    splayed_stretch = splayed(inds(diri-1):inds(diri));
+    
+    % save the number of defects most common for the stretch
+    table = tabulate(splayed_stretch);
+    [~, sind] = sort(table(:,2), 'descend');
+    tmp_splayed(diri-1) = table(sind(1),1);
 end
 splayed = tmp_splayed;
 
-% decide between consecutive non zero directions 
+% decide between consecutive non zero directions and short stretched
 rem = [];
 stretches = diff([1; detected_directions_inds(:)]);
 for diri=2:numel(stretches)
     % if it is no a zero direction
-    if ~ismember([0 0], bindirs(detected_directions_inds(diri), :), 'rows')
-        if ~ismember([0 0], bindirs(detected_directions_inds(diri-1), :), 'rows')
-            if stretches(diri) > stretches(diri-1)
+    if ~ismember([0 0], bindirs(detected_directions_inds(diri), :), 'rows')...
+        && ~ismember([0 0], bindirs(detected_directions_inds(diri-1), :), 'rows')
+        if stretches(diri) > stretches(diri-1)
+            if stretches(diri-1) < 20
                 rem(end+1) = diri-1;
-            else
+            end
+        else
+            if stretches(diri) < 20
                 rem(end+1) = diri;
             end
-        end
+        end      
+    end
+    if stretches(diri) < 15
+        rem(end+1) = diri;
     end
 end
-filtered_detected_directions = detected_directions;
-filtered_detected_directions(rem,:) = [];
+f_directions = detected_directions;
+f_directions(rem,:) = [];
 splayed(rem)=[];
 
 % remove duplicates again because previous step may create dups
-filtered_detected_directions = filtered_detected_directions([true;~ismember(diff(filtered_detected_directions),[0 0], 'rows')],:);
-filtered_detected_directions = filtered_detected_directions(~ismember(filtered_detected_directions,[0 0], 'rows'),:);
-splayed = splayed(~ismember(filtered_detected_directions,[0 0], 'rows'));
+keep = [true;~ismember(diff(f_directions),[0 0], 'rows')];
 
-passcode = [filtered_detected_directions splayed(:)];
+splayed = splayed(keep);
+f_directions = f_directions(keep,:);
+
+% remove rows of zeros
+keep = ~ismember(f_directions,[0 0], 'rows');
+f_directions = f_directions(keep,:);
+splayed = splayed(keep);
+splayed(splayed>2) = 2;
+
+passcode = [f_directions splayed(:)];
 
 plot(spos2, spos1, '-m');
 
@@ -220,7 +243,9 @@ function [contours, regions]=segment_image(binFrame)
     [contours,orig_regions] = bwboundaries(binFrame,'noholes');
     
     % sort by size
-    [sorted, idx] = sort(cellfun(@(x)length(x),contours), 'descend'); 
+    table = tabulate(orig_regions(orig_regions~=0));
+    
+    [sorted, idx] = sort(table(:,2), 'descend'); 
     contours = contours(idx);
     
     % sort region numbers
