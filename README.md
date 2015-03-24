@@ -11,13 +11,13 @@ left (1 0)
 right (-1 0)
 up (0 1)
 down (0 -1)
-diagonally (1 1), (-1 1), (-1 -1), or (1 -1) 
-also output of vector describing the hand type was displayed in during the sweeping motion
+diagonally (1 1), (-1 1), (-1 -1), or (1 -1). 
+The script also outputs of vector of 0,1,and 2's, describing the hand type was displayed in during the sweeping motion
 fist (0)
 splayed (1)
 peace sign (2)
 
-The script utulizes continous bright image regions and counting convext defects.
+The script identifies hands by selecting for continous bright regions on the image and counting convext defects.
 
-Here is a video of running the script:
+Here is a video of of the script in action:
 https://www.youtube.com/watch?v=lMOfdBqoBj0
